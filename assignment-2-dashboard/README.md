@@ -7,15 +7,14 @@ A real inventory & sales dashboard for a car dealership: salespeople manage
 the vehicles assigned to them, admins see everything, and two charts are
 computed **inside the database**, not in the browser.
 
-> **Honest status note:** this repo is fully coded, builds clean
-> (`npm run build`/`npm run lint`, zero errors), and I've reviewed every
-> query and RLS policy carefully — but I did not have Supabase CLI/Docker
-> or an existing Supabase account available in the environment I built
-> this in, so **I have not been able to run it against a live database and
-> click through it myself.** The "Setup from zero" section below is
-> exactly what I'd run to do that. Treat the RLS verification steps as a
-> script to execute, not a result I'm claiming to have already observed.
-> See `BUILD_LOG.md` for the full story.
+> **Status: verified live.** This has been run end-to-end against a real
+> Supabase project — both migrations, the seed script, sign-in as both
+> demo accounts, full CRUD, and the RLS boundary test below all actually
+> executed and observed, not just reviewed. Two real bugs turned up doing
+> that (a silently-skipped migration and a bad `RETURNING INTO` in the
+> seed script) — see `BUILD_LOG.md` for exactly what broke and how it was
+> caught, since that's more useful than pretending it was clean the first
+> time.
 
 ## Why Supabase
 
@@ -106,26 +105,24 @@ A few decisions worth calling out:
 
 #### Verifying the security boundary actually holds
 
-Once the project is provisioned and seeded (see below), this is the exact
-script to prove isolation holds, not just assume it:
+This was actually run against the live project, not just planned:
 
-1. Sign in as `salesperson@albacars.demo` in one browser and
-   `admin@albacars.demo` in another (or an incognito window).
-2. As the salesperson, note the vehicle IDs you can see on `/vehicles`.
-3. As the admin, confirm you can see **all** vehicles, including ones
-   assigned to the salesperson.
-4. Open the Supabase SQL Editor, run
-   `select id from vehicles where assigned_to != '<salesperson-user-id>'`
-   to get a vehicle ID that does **not** belong to the salesperson.
-5. Still signed in as the salesperson, try to open/edit that vehicle's ID
-   directly (e.g. via the Supabase JS client in the browser console:
-   `supabase.from('vehicles').select().eq('id', '<that-id>')`) — expect an
-   **empty result**, not a permission error and not the row. RLS filters
-   silently rather than erroring, which is correct Postgres RLS behavior
-   and worth knowing going in so it isn't mistaken for a bug.
-6. Try `supabase.from('vehicles').update({ price: 1 }).eq('id', '<that-id>')`
-   as the salesperson — expect **0 rows affected**, again not an explicit
-   error.
+1. Signed in as `admin@albacars.demo` — Overview showed all 6 vehicles,
+   AED 417,000 total revenue (both salespeople's sales combined).
+2. Signed out, signed in as `salesperson@albacars.demo` — Overview showed
+   **4 vehicles** (only the ones `assigned_to` her) and **AED 93,000**
+   revenue (only her one sale), not the admin's numbers. `/vehicles` and
+   `/sales` matched: 4 rows and 1 row respectively, with the admin's
+   Nissan Patrol, Ford Explorer, and the Toyota Land Cruiser sale nowhere
+   in her view.
+3. This is what caught a real bug (see `BUILD_LOG.md`): the first time
+   this test ran, the salesperson saw all 6 vehicles and the full
+   revenue figure — identical to the admin's view. RLS was enabled in the
+   source file but had never actually been applied to the live database
+   (`relrowsecurity` was `false` on all three tables, zero policies
+   existed). Re-running `0002_rls.sql` — and this time actually confirming
+   the destructive-operation dialog rather than assuming the click landed
+   — fixed it; re-running the test above confirmed the fix.
 
 ### 2. Server-computed analytics
 
@@ -164,7 +161,13 @@ you're allowed to see" actually true instead of just implied.
 1. Create a free project at [supabase.com](https://supabase.com).
 2. In the SQL Editor, run the three migration files in order:
    `0001_schema.sql`, `0002_rls.sql`, `0003_analytics_views.sql`
-   (from `supabase/migrations/`).
+   (from `supabase/migrations/`). **Confirm the "destructive operation"
+   dialog Supabase shows for each one** — the SQL editor pops a
+   confirmation modal for statements it flags as risky (which includes
+   `alter table ... enable row level security` and most DDL), and
+   dismissing it without clicking through means the statement silently
+   never runs while the editor still shows the previous query's success
+   message. This bit me for real — see `BUILD_LOG.md`.
 3. In **Authentication → Users**, create two users:
    `admin@albacars.demo` and `salesperson@albacars.demo` (any password —
    note it down, you'll need it to log in).
@@ -172,16 +175,17 @@ you're allowed to see" actually true instead of just implied.
    by email, promotes the first to `role = 'admin'`, and inserts demo
    vehicles and sales.
 5. Copy `.env.local.example` to `.env.local` and fill in your project's
-   URL and anon key (Project Settings → API).
+   URL and anon key (Project Settings → API — the new "publishable" key
+   works fine in place of the legacy anon key).
 6. `npm install && npm run dev`, then sign in with either demo account.
 
 ### A way in
 
 Demo credentials (after step 3-4 above): `admin@albacars.demo` /
-`salesperson@albacars.demo`, whatever password you set when creating them
-in the Supabase dashboard. The seed script gives both accounts a realistic
-mix of available, pending, and sold inventory so the charts aren't empty
-on first login.
+`salesperson@albacars.demo`, password `AlbaDemo2026!` for both in this
+deployment. The seed script gives both accounts a realistic mix of
+available, pending, and sold inventory so the charts aren't empty on
+first login.
 
 ## API quirks / things worth knowing
 
@@ -215,13 +219,17 @@ on first login.
 ## How I tested this
 
 - `npm run build` and `npm run lint`: clean, zero errors, zero warnings.
-- Read through every RLS policy against every query the app makes,
-  tracing what each role can and can't do — see "Verifying the security
-  boundary" above for the exact live-test script.
+- Provisioned a real Supabase project, ran all three migrations and the
+  seed script, and clicked through the actual app against live data.
+- Signed in as `admin@albacars.demo`: Overview KPIs, revenue-by-month
+  chart, and inventory-aging chart all rendered real seeded numbers.
+  Marked a vehicle sold end-to-end (Inventory → "Mark sold" → customer
+  name + price → confirm), and the new sale immediately appeared on
+  `/sales` and updated the Overview revenue figure.
+- Signed in as `salesperson@albacars.demo` and confirmed the RLS boundary
+  holds — see "Verifying the security boundary" above.
 - Confirmed the "Supabase not configured" fallback renders correctly with
-  no environment variables set (screenshot-level check in a real browser).
-- **Not yet done** (no live database available while building): the
-  actual sign-in flow, CRUD against real rows, the RLS boundary test
-  itself, and the charts rendering real aggregated data. This is the
-  single biggest gap between "I wrote this" and "I know this works" — see
-  `BUILD_LOG.md`.
+  no environment variables set.
+- Along the way, found and fixed two real bugs that only a live run could
+  have caught (a migration that silently never applied, and a broken
+  `RETURNING INTO` in the seed script) — full detail in `BUILD_LOG.md`.

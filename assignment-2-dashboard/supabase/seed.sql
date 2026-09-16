@@ -10,7 +10,7 @@ do $$
 declare
   admin_id uuid;
   sales_id uuid;
-  v1 uuid; v2 uuid; v3 uuid; v4 uuid; v5 uuid; v6 uuid;
+  v5 uuid; v6 uuid;
 begin
   select id into admin_id from auth.users where email = 'admin@albacars.demo';
   select id into sales_id from auth.users where email = 'salesperson@albacars.demo';
@@ -28,8 +28,7 @@ begin
     (gen_random_uuid(), 'VIN0001', 'Toyota', 'Land Cruiser', 2022, 185000, 150000, 'available', sales_id, now() - interval '4 days'),
     (gen_random_uuid(), 'VIN0002', 'BMW', 'X5', 2021, 210000, 175000, 'available', sales_id, now() - interval '38 days'),
     (gen_random_uuid(), 'VIN0003', 'Mercedes-Benz', 'C-Class', 2023, 165000, 138000, 'pending', sales_id, now() - interval '11 days'),
-    (gen_random_uuid(), 'VIN0004', 'Nissan', 'Patrol', 2020, 175000, 145000, 'available', admin_id, now() - interval '61 days')
-  returning id into v4;
+    (gen_random_uuid(), 'VIN0004', 'Nissan', 'Patrol', 2020, 175000, 145000, 'available', admin_id, now() - interval '61 days');
 
   -- Already-sold vehicles, so the revenue chart has something to show.
   insert into public.vehicles (id, vin, make, model, year, price, cost, status, assigned_to, listed_at, sold_at)

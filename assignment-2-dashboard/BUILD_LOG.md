@@ -67,13 +67,34 @@ pair to actually finish well rather than spreading across three).
 
 ## Hard parts / dead ends
 
-- **No Docker, no Supabase CLI, no existing Supabase account in this
-  environment.** This is the big one — see "Known limitations" below. I
-  can't spin up `supabase start` locally (needs Docker) and creating a new
-  cloud Supabase account is account-creation, which I don't do on someone
-  else's behalf even with permission. Consequence: every SQL file and
-  every Supabase query in this repo has been read and re-read for
-  correctness, but not executed.
+- **A migration can report success without actually running.** The
+  Supabase SQL Editor pops a confirmation dialog for statements it
+  classifies as destructive (this includes `alter table ... enable row
+  level security`, and apparently most multi-statement DDL scripts) — if
+  that dialog isn't explicitly confirmed, the query never executes, but
+  the results pane keeps showing whatever the *previous* successful query
+  displayed. `0002_rls.sql` (RLS + policies) and `0003_analytics_views.sql`
+  (views + `dashboard_summary`) both silently no-opped this way the first
+  time — the editor showed "Success. No rows returned" for both, which
+  was actually stale output left over from `0001_schema.sql`. This stayed
+  invisible until the live app was actually clicked through: the Overview
+  KPIs read 0 across the board (the `dashboard_summary` RPC was a genuine
+  404 — the function didn't exist), and a signed-in salesperson could see
+  every vehicle and the full revenue figure instead of just her own,
+  because RLS had never actually been turned on (`relrowsecurity` was
+  `false` on all three tables, `pg_policies` was empty). Both fixed by
+  re-running the migrations and this time explicitly clicking "Run query"
+  on the confirmation dialog, then verifying against `pg_class`,
+  `pg_policies`, and `pg_proc` directly instead of trusting the results
+  pane's text.
+- **A `RETURNING INTO` bug in `seed.sql`.** The first insert into
+  `vehicles` adds four rows in one statement but had `returning id into
+  v4` tacked on — a scalar `INTO` on a multi-row `RETURNING` throws
+  `P0003: query returned more than one row`. `v4` wasn't even used
+  anywhere else in the script. Fixed by dropping the `RETURNING INTO`
+  (and the unused `v1`–`v4` variables) from that insert entirely, since
+  only the two single-row inserts further down actually need their id
+  captured.
 - **Hand-writing `Database` types instead of `supabase gen types`.**
   Without a live project there's nothing to generate types from. My first
   attempt was missing the `Relationships`, `Enums`, and `CompositeTypes`
@@ -105,35 +126,36 @@ pair to actually finish well rather than spreading across three).
 - `npm run build` and `npm run lint`: clean, zero errors, zero warnings —
   including the type-check pass, which caught the Database-types issue
   above.
-- Manually re-read every RLS policy against every query the app issues,
-  tracing what a `salesperson` vs an `admin` can and can't do for each of
-  select/insert/update/delete on all three tables.
-- Confirmed in a real browser that the "Supabase not configured" fallback
-  renders correctly with no environment variables set.
-- **Did not verify** (see Known limitations): sign-in, CRUD against real
-  rows, the RLS boundary actually holding under a live two-user test, or
-  the charts rendering real data. The README's "Verifying the security
-  boundary" section is written as a script for me (or you) to run once a
-  real project exists — not a report of having already run it.
+- Provisioned a real Supabase project (`alba-cars-dashboard`), ran all
+  three migrations and the seed script against it, created the two demo
+  auth users, and populated `.env.local` with the real project URL and
+  publishable key.
+- Ran the app locally (`npm run dev`) and clicked through it as both demo
+  accounts: signed in as admin (Overview/Inventory/Sales all showed real
+  seeded data), marked a vehicle sold end-to-end and watched the sale
+  appear on `/sales` and the revenue KPI update immediately, then signed
+  in as the salesperson and confirmed she saw only her own 4 vehicles and
+  her one AED 93,000 sale — not the admin's 6 vehicles or AED 417,000.
+- This live run is what surfaced the two real bugs above (the silently
+  skipped RLS/analytics migrations, and the seed script's `RETURNING
+  INTO` error) — neither was visible from reading the SQL alone, which is
+  exactly why "reviewed carefully" and "verified" needed to stop being
+  treated as the same claim for this assignment.
 
 ## Known limitations
 
-- **Untested against a live database.** This is the honest, important
-  one. Everything here is my best, careful work reading SQL and
-  TypeScript rather than watching it run. Standard Supabase/Postgres/RLS
-  patterns are well-trodden ground and I'm confident in the approach, but
-  "confident" and "verified" are different claims, and I'm not
-  overstating which one this is.
+- No automated tests. The RLS policies in particular would benefit from a
+  small test suite that signs in as two different users and asserts what
+  each can and can't see — the manual script in the README, made
+  automatic. This matters more than usual here, since the RLS bug above
+  is exactly the kind of regression a signed-in-as-both-roles test would
+  catch instantly instead of needing a manual click-through to notice.
 - Admins can't reassign an existing vehicle to a different salesperson
   from the edit form — the assignment picker only appears when adding a
   new vehicle. A real version of this app would need that; it just wasn't
   essential to prove the RLS/analytics story for the assessment.
 - No pagination on the vehicles/sales tables — fine for a demo dataset,
   would matter at real dealership scale.
-- No automated tests. The RLS policies in particular would benefit from a
-  small test suite that signs in as two different users and asserts what
-  each can and can't see — exactly the manual script in the README, made
-  automatic.
 
 ## Time spent
 
@@ -143,4 +165,8 @@ pair to actually finish well rather than spreading across three).
 - CRUD pages, forms, Server Actions: ~55 min
 - Charts: ~20 min
 - Bug fixing (Database types, duplicate route, static-rendering bug): ~30 min
-- Docs (README, this log): ~30 min
+- Live provisioning (Supabase project, running migrations/seed, demo
+  users, `.env.local`) and end-to-end click-through as both roles: ~35 min
+- Debugging the silently-skipped-migration and seed script bugs found
+  during that live run: ~20 min
+- Docs (README, this log): ~35 min
