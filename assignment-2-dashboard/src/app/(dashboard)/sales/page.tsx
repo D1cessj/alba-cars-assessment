@@ -49,7 +49,8 @@ export default async function SalesPage() {
 
       {!error && sales && sales.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm min-w-[600px]">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Vehicle</th>
@@ -81,6 +82,7 @@ export default async function SalesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
