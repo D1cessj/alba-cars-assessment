@@ -1,6 +1,6 @@
 # Nightscope — Stargazing Conditions Explorer
 
-**Live demo:** _add your deployed URL here_
+**Live demo:** https://assignment-1-stargazing.vercel.app
 **Assignment:** Alba Cars take-home, Assignment 1 (Creative, API-Integrated Web App)
 
 Nightscope answers one question for any city on Earth: **"Is tonight good for

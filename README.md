@@ -5,8 +5,8 @@ README, BUILD_LOG.md, and setup instructions.
 
 | Assignment | Folder | Live URL | Status |
 |---|---|---|---|
-| 1 — Creative, API-Integrated Web App | [`assignment-1-stargazing`](./assignment-1-stargazing) | _add once deployed_ | Built & tested locally |
-| 2 — Data Dashboard on a Backend Service | [`assignment-2-dashboard`](./assignment-2-dashboard) | _add once deployed_ | Built & verified live against a real Supabase project (see its README) |
+| 1 — Creative, API-Integrated Web App | [`assignment-1-stargazing`](./assignment-1-stargazing) | https://assignment-1-stargazing.vercel.app | Built, tested, and deployed live |
+| 2 — Data Dashboard on a Backend Service | [`assignment-2-dashboard`](./assignment-2-dashboard) | https://assignment-2-dashboard-six.vercel.app | Built, verified live against a real Supabase project, and deployed |
 | 3 — n8n Automation Workflow | _n8n Cloud (see below)_ | https://saifo009.app.n8n.cloud | Built & tested |
 
 ## Assignment 1 — Nightscope

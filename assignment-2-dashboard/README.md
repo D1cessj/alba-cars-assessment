@@ -1,6 +1,6 @@
 # Alba Cars — Dealership Dashboard
 
-**Live demo:** _add your deployed URL here_
+**Live demo:** https://assignment-2-dashboard-six.vercel.app
 **Assignment:** Alba Cars take-home, Assignment 2 (Data Dashboard on a Backend Service)
 
 A real inventory & sales dashboard for a car dealership: salespeople manage
