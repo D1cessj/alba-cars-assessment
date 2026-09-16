@@ -1,7 +1,13 @@
 # Alba Cars — Vehicle Recall Watcher & Digest
 
-**Live workflow:** https://saifo009.app.n8n.cloud/workflow/ZrtaWogP6jDpacm6 (n8n Cloud)
-**Data store:** [Alba Cars - Recall Watcher](https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo) (Google Sheets)
+**Workflow:** https://saifo009.app.n8n.cloud/workflow/ZrtaWogP6jDpacm6 (n8n Cloud —
+this link opens the canvas but requires my personal n8n login; n8n Cloud's
+Personal plan shares workflows by inviting a specific account, not via a
+public read-only link, so it isn't something I can hand to an arbitrary
+reviewer's email in advance. The exported [`workflow.json`](./workflow.json)
+in this folder is the actual reviewable artifact — see "Importing this
+workflow" below for how to run it yourself in about five minutes.)
+**Data store:** [Alba Cars - Recall Watcher](https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo) (Google Sheets, private — same reasoning)
 **Assignment:** Alba Cars take-home, Assignment 3 (n8n Automation Workflow)
 
 A daily workflow that checks every vehicle in the dealership's inventory
@@ -68,6 +74,22 @@ Log Run (Found Recalls)
 Full node definitions, parameters, and the two Code nodes: [`workflow.json`](./workflow.json)
 (exported directly from n8n — see "Importing this workflow" below).
 
+### Node by node
+
+| Node | Type | What it does | Data in → out |
+|---|---|---|---|
+| **Schedule Trigger** | Schedule Trigger | Fires once a day at 08:00. | — → nothing (just starts the run) |
+| **Read Inventory** | Google Sheets (read) | Reads every row of the `Inventory` tab. | — → one item per vehicle (`Make`, `Model`, `Year`) |
+| **Get NHTSA Recalls** | HTTP Request | Calls `GET /recalls/recallsByVehicle` once per vehicle, using that vehicle's Make/Model/Year in the query. Retries 3× on failure; on a non-2xx response it continues instead of aborting the run (see the NHTSA quirk below). | one item per vehicle → that vehicle's raw NHTSA response |
+| **Read Seen Recalls** | Google Sheets (read) | Reads every row of `SeenRecalls` once (`executeOnce`), regardless of how many vehicles are being checked. | — → every previously-seen `CampaignNumber` |
+| **Filter New Recalls** | Code | The core logic. Cross-references `$('Read Inventory')` and `$('Get NHTSA Recalls')` item-by-item against the seen set from `Read Seen Recalls`. Emits one item per genuinely new recall (`isNewRecall: true`), or, if none are new, a single summary item (`isNewRecall: false`, plus `vehiclesChecked`/`errorCount`/`errors`). | 3 inputs merged → either N new-recall items or 1 "nothing new" item |
+| **Any New Recalls?** | IF | Branches on `isNewRecall`. | → true branch or false branch |
+| **Build Digest** *(true branch)* | Code | Turns the new-recall items into one HTML table (vehicle, campaign #, component, summary). | N recall items → 1 item (`htmlBody`, `newCount`) |
+| **Send Digest Email** *(true branch)* | Gmail | Emails the HTML digest. | `htmlBody` → sent email |
+| **Append to SeenRecalls** *(true branch, parallel to Build Digest)* | Google Sheets (append) | Writes each new recall's `CampaignNumber` etc. into `SeenRecalls`, so it's never treated as new again. | N recall items → N sheet rows |
+| **Log Run (Found Recalls)** *(true branch, after the email sends)* | Google Sheets (append) | Writes one `RunLog` row: timestamp, vehicles checked, how many new recalls, `Errors: 0`. | — → 1 sheet row |
+| **Log Run (No New Recalls)** *(false branch)* | Google Sheets (append) | Writes one `RunLog` row using the summary item's `vehiclesChecked`/`errorCount` — `NewRecallsFound: 0`. | 1 summary item → 1 sheet row |
+
 ### The sheet is doing three separate jobs, on purpose
 
 - **Inventory** — the dealership's actual stock (Make/Model/Year). Stands
@@ -100,19 +122,31 @@ Fixed two ways:
 
 ## How I verified it
 
-Ran it for real, twice, back-to-back:
+Ran it for real, twice, back-to-back, against the live Google Sheet. This
+is the actual `RunLog` data from those two runs (2026-09-16):
 
-1. **First run** — found recalls for the seeded inventory that weren't yet
-   in `SeenRecalls`, sent the digest email, appended them to
-   `SeenRecalls`, logged the run.
-2. **Second run, immediately after** — same inventory, same NHTSA data,
-   but every `CampaignNumber` was now already in `SeenRecalls`. Result:
-   **zero emails sent**, `RunLog` shows `NewRecallsFound: 0` for that run.
+| Timestamp | VehiclesChecked | NewRecallsFound | Errors |
+|---|---|---|---|
+| 2026-09-16T02:xx:xx | 8 | **52** | 0 |
+| 2026-09-16T02:xx:xx | 8 | **0** | 3 |
 
-That second run is the actual proof this works — anyone can make an
+1. **First run** — 8 vehicles checked, 52 recalls found across NHTSA's
+   *full* recall history for those make/model/years (NHTSA doesn't limit
+   this to "recent" recalls — a vehicle can easily have a dozen campaigns
+   across its production run). All 52 were new, so they went out in one
+   digest email and all 52 `CampaignNumber`s were appended to
+   `SeenRecalls`.
+2. **Second run, immediately after** — same 8 vehicles, same NHTSA data.
+   Every `CampaignNumber` was now already in `SeenRecalls`, so
+   `NewRecallsFound: 0` and **zero emails sent**. This run also happened
+   to hit NHTSA lookup errors on 3 vehicles (visible in the `Errors`
+   column, not silently dropped) — a live, unplanned demonstration of the
+   error-handling path described below, not a scripted one.
+
+That second row is the actual proof this works — anyone can make an
 automation send an email once. Making it correctly send *nothing* on the
-second identical run is the part that's easy to get wrong (and the part a
-demo usually skips).
+second identical run, while still surfacing that 3 lookups failed, is the
+part that's easy to get wrong (and the part a demo usually skips).
 
 ## Importing this workflow
 
@@ -129,6 +163,11 @@ demo usually skips).
    `Send Digest Email` node's recipient (the committed copy uses a
    placeholder address, not a real one — see "A note on the export"
    below), and activate the workflow.
+5. **To run it immediately** rather than waiting for 08:00: open the
+   canvas and click **Execute workflow** (bottom toolbar) — this runs the
+   whole pipeline once, right now, and you'll see each node light up
+   green/red as it completes, with the item count it produced. That's the
+   fastest way to confirm the import worked before trusting the schedule.
 
 ### A note on the export
 

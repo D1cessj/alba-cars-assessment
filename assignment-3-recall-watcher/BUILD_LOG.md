@@ -82,12 +82,17 @@ the easier one (send an email on a trigger).
 
 - Ran the workflow manually end-to-end from n8n's canvas (not just
   "looks right" — actually executed).
-- **First run**: real new recalls surfaced for the seeded inventory,
-  digest email sent, rows landed in both `SeenRecalls` and `RunLog`.
-- **Second run, immediately after, same inventory**: zero new recalls
-  (everything was now in `SeenRecalls`), zero emails sent, `RunLog` shows
-  `NewRecallsFound: 0` — this is the actual proof the idempotency logic
-  works, since a naive version would have re-sent the same digest.
+- **First run**: 8 vehicles checked, 52 real new recalls surfaced for the
+  seeded inventory, digest email sent, all 52 rows landed in
+  `SeenRecalls`, one row landed in `RunLog`.
+- **Second run, immediately after, same inventory**: `RunLog` shows
+  `NewRecallsFound: 0` — every campaign number was now already in
+  `SeenRecalls`, so zero emails sent. This is the actual proof the
+  idempotency logic works, since a naive version would have re-sent the
+  same 52-recall digest. That same run also logged `Errors: 3` — three
+  vehicles hit a real NHTSA lookup failure, and it showed up as a visible
+  number in `RunLog` instead of vanishing, which is the error-handling
+  path working exactly as designed, not staged.
 - Read every node's parameters and the two Code nodes end to end, tracing
   what happens to a vehicle whose NHTSA call fails vs. succeeds vs.
   returns zero recalls.
