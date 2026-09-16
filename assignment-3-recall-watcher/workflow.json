@@ -1,0 +1,598 @@
+{
+  "name": "Vehicle Recall Watcher & Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0f30e61e-3523-4b5e-8ced-f6101bbd501d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo",
+          "mode": "list",
+          "cachedResultName": "Alba Cars - Recall Watcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "1d2d177e-ab5d-4695-bd5c-7dcc024e703b",
+      "name": "Read Inventory",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "89WJZ6oRtVNQ0Br2",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.nhtsa.gov/recalls/recallsByVehicle?make={{ $json.Make }}&model={{ $json.Model }}&modelYear={{ $json.Year }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "76e46709-b60b-4e72-ba05-4391fd882b52",
+      "name": "Get NHTSA Recalls",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo",
+          "mode": "list",
+          "cachedResultName": "Alba Cars - Recall Watcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1585725582,
+          "mode": "list",
+          "cachedResultName": "SeenRecalls",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit#gid=1585725582"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        672,
+        0
+      ],
+      "id": "da16ff7f-db0b-4bc8-b014-c04536e5a542",
+      "name": "Read Seen Recalls",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "89WJZ6oRtVNQ0Br2",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inventory = $('Read Inventory').all();\nconst recallResponses = $('Get NHTSA Recalls').all();\nconst seenItems = $input.all();\n\nconst seenCampaignNumbers = new Set(\n    seenItems.map(item => item.json.CampaignNumber).filter(v => v)\n  );\n\nconst newRecalls = [];\nconst errors = [];\n\nfor (let i = 0; i < inventory.length; i++) {\n    const vehicle = inventory[i].json;\n    const response = recallResponses[i] ? recallResponses[i].json : null;\n\n    if (!response || response.error) {\n          errors.push(vehicle.Make + ' ' + vehicle.Model + ' ' + vehicle.Year + ': ' + (response && response.error ? JSON.stringify(response.error).slice(0, 200) : 'no response'));\n          continue;\n    }\n\n    const results = response.results || [];\n    for (const recall of results) {\n          const campaignNumber = recall.NHTSACampaignNumber;\n          if (seenCampaignNumbers.has(campaignNumber)) continue;\n          seenCampaignNumbers.add(campaignNumber);\n\n          newRecalls.push({\n                  json: {\n                            isNewRecall: true,\n                            CampaignNumber: campaignNumber,\n                            Make: vehicle.Make,\n                            Model: vehicle.Model,\n                            Year: vehicle.Year,\n                            Component: recall.Component,\n                            Summary: recall.Summary,\n                            Manufacturer: recall.Manufacturer,\n                            ReportedDate: recall.ReportReceivedDate\n                  }\n          });\n    }\n}\n\nif (newRecalls.length === 0) {\n    return [{ json: { isNewRecall: false, vehiclesChecked: inventory.length, errorCount: errors.length, errors } }];\n}\n\nreturn newRecalls;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "d6e3469d-ea0d-4542-bf84-47fb40ae7570",
+      "name": "Filter New Recalls"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "97c5da27-6f1b-496c-b5ad-ccb6bffef735",
+              "leftValue": "={{ $json.isNewRecall }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "4be786a5-975b-42de-bd3b-8d05b303f98e",
+      "name": "Any New Recalls?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst rows = items.map(function(item) {\n    const r = item.json;\n    return '<tr>' +\n          '<td style=\"padding:6px;border:1px solid #ddd;\">' + r.Make + ' ' + r.Model + ' (' + r.Year + ')</td>' +\n          '<td style=\"padding:6px;border:1px solid #ddd;\">' + r.CampaignNumber + '</td>' +\n          '<td style=\"padding:6px;border:1px solid #ddd;\">' + r.Component + '</td>' +\n          '<td style=\"padding:6px;border:1px solid #ddd;\">' + String(r.Summary).slice(0, 200) + '...</td>' +\n          '</tr>';\n}).join('');\n\nconst html = '<h2>Alba Cars Recall Digest</h2>' +\n    '<p>' + items.length + ' new recall(s) found across your inventory.</p>' +\n    '<table style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;\">' +\n    '<tr style=\"background:#f2f2f2;\">' +\n    '<th style=\"padding:6px;border:1px solid #ddd;text-align:left;\">Vehicle</th>' +\n    '<th style=\"padding:6px;border:1px solid #ddd;text-align:left;\">Campaign #</th>' +\n    '<th style=\"padding:6px;border:1px solid #ddd;text-align:left;\">Component</th>' +\n    '<th style=\"padding:6px;border:1px solid #ddd;text-align:left;\">Summary</th>' +\n    '</tr>' + rows + '</table>';\n\nreturn [{\n    json: {\n          htmlBody: html,\n          newCount: items.length,\n          timestamp: new Date().toISOString()\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -96
+      ],
+      "id": "321738f3-f4a7-49bb-9b6a-fa276bb32919",
+      "name": "Build Digest"
+    },
+    {
+      "parameters": {
+        "sendTo": "you@albacars.demo",
+        "subject": "Alba Cars - New Vehicle Recall Digest",
+        "message": "={{ $json.htmlBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "00bad50f-d404-479f-adae-b8060ee1d948",
+      "name": "Send Digest Email",
+      "webhookId": "d488668e-8162-4cf3-b261-841b6753fb4a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ixLb5DRWXndYFQ3P",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo",
+          "mode": "list",
+          "cachedResultName": "Alba Cars - Recall Watcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1585725582,
+          "mode": "list",
+          "cachedResultName": "SeenRecalls",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit#gid=1585725582"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "CampaignNumber": "={{ $json.CampaignNumber }}",
+            "Make": "={{ $json.Make }}",
+            "Model": "={{ $json.Model }}",
+            "Year": "={{ $json.Year }}",
+            "Component": "={{ $json.Component }}",
+            "Summary": "={{ $json.Summary }}",
+            "DateSeen": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "CampaignNumber",
+              "displayName": "CampaignNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Make",
+              "displayName": "Make",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Model",
+              "displayName": "Model",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Year",
+              "displayName": "Year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Component",
+              "displayName": "Component",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "DateSeen",
+              "displayName": "DateSeen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1296,
+        144
+      ],
+      "id": "e5b46a85-3a41-4617-b109-ed4225c6dd88",
+      "name": "Append to SeenRecalls",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "89WJZ6oRtVNQ0Br2",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo",
+          "mode": "list",
+          "cachedResultName": "Alba Cars - Recall Watcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1185562747,
+          "mode": "list",
+          "cachedResultName": "RunLog",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit#gid=1185562747"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "VehiclesChecked": "={{ $('Read Inventory').all().length }}",
+            "NewRecallsFound": "={{ $('Build Digest').item.json.newCount }}",
+            "Errors": "0"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "VehiclesChecked",
+              "displayName": "VehiclesChecked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NewRecallsFound",
+              "displayName": "NewRecallsFound",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Errors",
+              "displayName": "Errors",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1584,
+        -160
+      ],
+      "id": "ece76504-ee78-4a2b-a7d3-961ac0c44ec6",
+      "name": "Log Run (Found Recalls)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "89WJZ6oRtVNQ0Br2",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo",
+          "mode": "list",
+          "cachedResultName": "Alba Cars - Recall Watcher",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1185562747,
+          "mode": "list",
+          "cachedResultName": "RunLog",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1KyaswUqG17pbKoS1N4L0Ihcm9C7ar_RsrKm-4SKdEPo/edit#gid=1185562747"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "VehiclesChecked": "={{ $json.vehiclesChecked }}",
+            "NewRecallsFound": "0",
+            "Errors": "={{ $json.errorCount }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "VehiclesChecked",
+              "displayName": "VehiclesChecked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NewRecallsFound",
+              "displayName": "NewRecallsFound",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Errors",
+              "displayName": "Errors",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1440,
+        288
+      ],
+      "id": "ee4a36be-7929-4763-91af-e94b328e5692",
+      "name": "Log Run (No New Recalls)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "89WJZ6oRtVNQ0Br2",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Inventory": {
+      "main": [
+        [
+          {
+            "node": "Get NHTSA Recalls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get NHTSA Recalls": {
+      "main": [
+        [
+          {
+            "node": "Read Seen Recalls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Seen Recalls": {
+      "main": [
+        [
+          {
+            "node": "Filter New Recalls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Recalls": {
+      "main": [
+        [
+          {
+            "node": "Any New Recalls?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any New Recalls?": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append to SeenRecalls",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Run (No New Recalls)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Digest Email": {
+      "main": [
+        [
+          {
+            "node": "Log Run (Found Recalls)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0ed70f9e-6ed9-44a9-b016-8efb26cd55eb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3b75c051f142d827e2d80d6fb1980ceb54fe4874f67b519e7496294a58c9352d"
+  },
+  "nodeGroups": [],
+  "id": "ZrtaWogP6jDpacm6",
+  "tags": []
+}

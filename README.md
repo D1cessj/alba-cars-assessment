@@ -7,7 +7,7 @@ README, BUILD_LOG.md, and setup instructions.
 |---|---|---|---|
 | 1 — Creative, API-Integrated Web App | [`assignment-1-stargazing`](./assignment-1-stargazing) | https://assignment-1-stargazing.vercel.app | Built, tested, and deployed live |
 | 2 — Data Dashboard on a Backend Service | [`assignment-2-dashboard`](./assignment-2-dashboard) | https://assignment-2-dashboard-six.vercel.app | Built, verified live against a real Supabase project, and deployed |
-| 3 — n8n Automation Workflow | _n8n Cloud (see below)_ | https://saifo009.app.n8n.cloud | Built & tested |
+| 3 — n8n Automation Workflow | [`assignment-3-recall-watcher`](./assignment-3-recall-watcher) | https://saifo009.app.n8n.cloud | Built, tested twice end-to-end, workflow exported |
 
 ## Assignment 1 — Nightscope
 
@@ -26,4 +26,6 @@ security and server-computed analytics. See
 
 An n8n workflow that checks the dealership's inventory against NHTSA's
 public recall database daily, emails a digest of new recalls, and logs
-every run to Google Sheets for verification. Live on n8n Cloud.
+every run to Google Sheets for verification. Runs on n8n Cloud; the
+exported workflow and full write-up are in
+[`assignment-3-recall-watcher/README.md`](./assignment-3-recall-watcher/README.md).
