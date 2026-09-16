@@ -1,4 +1,5 @@
 import { signIn } from "./actions";
+import { SubmitButton } from "./SubmitButton";
 
 export default async function LoginPage({
   searchParams,
@@ -57,12 +58,7 @@ export default async function LoginPage({
             </p>
           )}
 
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
-          >
-            Sign in
-          </button>
+          <SubmitButton />
         </form>
 
         <p className="mt-4 text-center text-xs text-slate-400">
